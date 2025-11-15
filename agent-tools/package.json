@@ -1,0 +1,31 @@
+{
+  "name": "agent-tools",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "main": "src/main.ts",
+  "scripts": {
+    "dev": "frontmcp dev",
+    "build": "frontmcp build",
+    "inspect": "frontmcp inspector",
+    "doctor": "frontmcp doctor"
+  },
+  "engines": {
+    "node": ">=22",
+    "npm": ">=10"
+  },
+  "dependencies": {
+    "@frontmcp/adapters": "^0.3.0",
+    "@frontmcp/plugins": "^0.3.0",
+    "@frontmcp/sdk": "^0.3.0",
+    "dotenv": "^17.2.3",
+    "reflect-metadata": "^0.2.2",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "frontmcp": "0.3.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.5.3"
+  }
+}
