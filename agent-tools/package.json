@@ -23,8 +23,8 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
-    "frontmcp": "0.3.0",
+    "@types/node": "^20.19.25",
+    "frontmcp": "^0.3.0",
     "tsx": "^4.20.6",
     "typescript": "^5.5.3"
   }

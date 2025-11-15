@@ -60,6 +60,7 @@ Tips for Custom Prompts:
 from google.adk.agents import Agent
 from pydantic import BaseModel, Field
 from google.adk.tools import MCPToolset
+from google.adk.tools.mcp_tool.mcp_session_manager import StreamableHTTPConnectionParams
 
 from config import Config
 
@@ -110,9 +111,13 @@ class GeneratorOutput(BaseModel):
 # Generator: Generate answers and traces using playbook
 # ============================================
 youtube_tools = MCPToolset(
-    name="youtube_tools",
-    # Replace with the actual address of your MCP server
-    mcp_server_address="http://localhost:8080",
+    # Replace with the actual address of your MCP server.
+    # Newer ADK versions expect a `connection_params` object instead of
+    # `mcp_server_address`. Use StreamableHTTPConnectionParams for an
+    # HTTP(S) MCP server endpoint.
+    connection_params=StreamableHTTPConnectionParams(
+        url="https://dat-certification-costs-keyword.trycloudflare.com",
+    ),
 )
 
 
