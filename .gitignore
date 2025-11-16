@@ -5,3 +5,4 @@ client_secret.json
 youtube-token.json
 .venv
 *.sh
+sample_output.txt
