@@ -6,9 +6,7 @@ import { YouTubeApp } from './youtube.app';
 @FrontMcp({
   info: { name: 'Youtube-agent 🚀', version: '0.1.0' },
   apps: [YouTubeApp],
-  session: {
-    sessionMode: 'stateless',
-    transportIdMode: 'uuid'
-  }
+  serve: true,
+  http: { port: 3001, entryPath: '' } // ← MCP endpoint available here
 })
 export default class Server { }
