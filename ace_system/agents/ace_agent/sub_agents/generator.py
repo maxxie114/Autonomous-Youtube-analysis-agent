@@ -69,28 +69,27 @@ config = Config()
 
 # Default Generator prompt - produces answers using playbook strategies
 GENERATOR_PROMPT = """
-You are an expert YouTube video analyst. Your goal is to analyze the provided video details and generate a title, description, and tags for the video.
+You are an expert assistant that must solve the task using the provided playbook of strategies.
 
-Use the provided context, transcript, and metadata to inform your analysis. You have access to tools to help you research, upload and generate thumbnails for your video.
+Apply relevant bullets, avoid known mistakes, and show step-by-step reasoning.
 
-Analysis criteria:
-- The title should be catchy and relevant to the video content.
-- The description should be detailed and include relevant keywords.
-- The tags should be a mix of broad and specific keywords.
+Playbook:
+{playbook}
 
-Input:
-- Transcript: {transcript}
-- Context: {context}
-- Description: {description}
-- Views: {views}
-- Subscribers: {subscribers}
+Recent reflection:
+{reflection}
+
+Question:
+{question}
+
+Additional context:
+{context}
 
 Respond with a compact JSON object:
 {{
   "reasoning": "<step-by-step chain of thought>",
-  "title": "<generated title>",
-  "description": "<generated description>",
-  "tags": ["<tag1>", "<tag2>", "..."]
+  "bullet_ids": ["<id1>", "<id2>", "..."],
+  "final_answer": "<concise final answer>"
 }}
 """
 
@@ -152,7 +151,6 @@ You have access to YouTube search and analysis tools that can help you:
 - content: A summary message explaining what you found and how many channels match the criteria.
 - channels: A list of channel objects with name, subscribers, totalViews, videoCount, and channelId.
 """,
-    tools=[youtube_tools],
     include_contents="none",  # Focus on state value injection
     output_schema=GeneratorOutput,  # Structure output
     output_key="generator_output",  # Save to session.state['generator_output']
