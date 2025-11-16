@@ -4,13 +4,15 @@ import { Textarea } from "@/components/ui/textarea";
 import { ChatMessage } from "@/components/ChatMessage";
 import { AgentWorkflow } from "@/components/AgentWorkflow";
 import { ChannelCard } from "@/components/ChannelCard";
-import { Send, Youtube, Sparkles } from "lucide-react";
+import { Send, Youtube, Sparkles, Plus, ImageIcon, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { aceService } from "@/services/aceService";
 
 interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
+  image?: string;
   workflow?: Array<{
     id: string;
     label: string;
@@ -31,8 +33,12 @@ const Index = () => {
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [showCreateImageTab, setShowCreateImageTab] = useState(false);
+  const [showImageUploadAction, setShowImageUploadAction] = useState(false);
+  const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -42,29 +48,74 @@ const Index = () => {
     scrollToBottom();
   }, [messages]);
 
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const result = e.target?.result as string;
+        setUploadedImage(result);
+        setShowImageUploadAction(true);
+      };
+      reader.readAsDataURL(file);
+    } else {
+      toast({
+        title: "Invalid file",
+        description: "Please select a valid image file.",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const removeImage = () => {
+    setUploadedImage(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const handlePlusButtonClick = () => {
+    setShowCreateImageTab((prev) => {
+      const next = !prev;
+      if (!next) {
+        setShowImageUploadAction(false);
+      }
+      return next;
+    });
+  };
+
+  const handleCreateImageClick = () => {
+    setShowImageUploadAction(true);
+    setShowCreateImageTab(false);
+  };
+
+  const handleImageButtonClick = () => {
+    fileInputRef.current?.click();
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!input.trim() || isProcessing) return;
+    if ((!input.trim() && !uploadedImage) || isProcessing) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
       role: "user",
-      content: input.trim(),
+      content: input.trim() || "[Image uploaded]",
+      image: uploadedImage || undefined,
     };
 
     setMessages((prev) => [...prev, userMessage]);
+    const userInput = input.trim();
     setInput("");
+    setUploadedImage(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
     setIsProcessing(true);
 
-    // Create assistant message with workflow
+    // Create assistant message with initial workflow
     const assistantMessageId = (Date.now() + 1).toString();
-    const workflowSteps = [
-      { id: "1", label: "Analyzing query", status: "pending" as const },
-      { id: "2", label: "Searching YouTube", status: "pending" as const },
-      { id: "3", label: "Fetching statistics", status: "pending" as const },
-      { id: "4", label: "Formatting results", status: "pending" as const },
-    ];
 
     setMessages((prev) => [
       ...prev,
@@ -72,90 +123,72 @@ const Index = () => {
         id: assistantMessageId,
         role: "assistant",
         content: "Let me analyze that for you...",
-        workflow: workflowSteps,
+        workflow: [],
       },
     ]);
 
-    // Simulate workflow progression
-    for (let i = 0; i < workflowSteps.length; i++) {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+    try {
+      // Call ACE agent service
+      const response = await aceService.streamRequest(
+        { 
+          prompt: userInput,
+          image: uploadedImage || undefined
+        },
+        (workflow) => {
+          // Update workflow in real-time
+          setMessages((prev) =>
+            prev.map((msg) => {
+              if (msg.id === assistantMessageId) {
+                return { ...msg, workflow };
+              }
+              return msg;
+            })
+          );
+        }
+      );
 
+      // Update final response
       setMessages((prev) =>
         prev.map((msg) => {
-          if (msg.id === assistantMessageId && msg.workflow) {
-            const updatedWorkflow = [...msg.workflow];
-            updatedWorkflow[i] = {
-              ...updatedWorkflow[i],
-              status: "active",
+          if (msg.id === assistantMessageId) {
+            return {
+              ...msg,
+              content: response.content,
+              channels: response.channels,
+              workflow: response.workflow,
             };
-            return { ...msg, workflow: updatedWorkflow };
           }
           return msg;
         })
       );
 
-      await new Promise((resolve) => setTimeout(resolve, 500));
-
+      toast({
+        title: "Analysis complete",
+        description: response.channels ? `Found ${response.channels.length} channels` : "Response generated",
+      });
+    } catch (error) {
+      console.error('Error getting response:', error);
       setMessages((prev) =>
         prev.map((msg) => {
-          if (msg.id === assistantMessageId && msg.workflow) {
-            const updatedWorkflow = [...msg.workflow];
-            updatedWorkflow[i] = {
-              ...updatedWorkflow[i],
-              status: "complete",
-              description: "Completed successfully",
+          if (msg.id === assistantMessageId) {
+            return {
+              ...msg,
+              content: "Sorry, I encountered an error while processing your request. Please try again.",
+              workflow: undefined,
             };
-            return { ...msg, workflow: updatedWorkflow };
           }
           return msg;
         })
       );
+
+      toast({
+        title: "Error",
+        description: "Failed to get response from agent",
+        variant: "destructive",
+      });
     }
 
-    // Add results
-    const mockChannels = [
-      {
-        name: "Fireship",
-        subscribers: "3.2M",
-        totalViews: "245M",
-        videoCount: 450,
-        channelId: "UCsBjURrPoezykLs9EqgamOA",
-      },
-      {
-        name: "Web Dev Simplified",
-        subscribers: "1.5M",
-        totalViews: "120M",
-        videoCount: 380,
-        channelId: "UCFbNIlppjAuEX4znoulh0Cw",
-      },
-      {
-        name: "Traversy Media",
-        subscribers: "2.1M",
-        totalViews: "180M",
-        videoCount: 920,
-        channelId: "UC29ju8bIPH5as8OGnQzwJyA",
-      },
-    ];
-
-    setMessages((prev) =>
-      prev.map((msg) => {
-        if (msg.id === assistantMessageId) {
-          return {
-            ...msg,
-            content: `I found ${mockChannels.length} channels matching your query. Here are the results:`,
-            channels: mockChannels,
-          };
-        }
-        return msg;
-      })
-    );
-
     setIsProcessing(false);
-    
-    toast({
-      title: "Search complete",
-      description: `Found ${mockChannels.length} channels`,
-    });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -227,6 +260,15 @@ const Index = () => {
             <>
               {messages.map((message) => (
                 <ChatMessage key={message.id} role={message.role}>
+                  {message.image && (
+                    <div className="mb-3">
+                      <img
+                        src={message.image}
+                        alt="User uploaded"
+                        className="max-w-sm max-h-64 rounded-lg border border-border/20 shadow-sm"
+                      />
+                    </div>
+                  )}
                   <p className="text-foreground whitespace-pre-wrap">{message.content}</p>
                   
                   {message.workflow && (
@@ -253,29 +295,102 @@ const Index = () => {
       {/* Input Area */}
       <div className="border-t border-border/40 bg-background/80 backdrop-blur-lg flex-shrink-0">
         <div className="container mx-auto max-w-4xl px-4 py-4">
-          <form onSubmit={handleSubmit} className="relative">
-            <Textarea
-              ref={textareaRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Ask about YouTube channels... (Press Enter to send, Shift+Enter for new line)"
-              className="min-h-[60px] max-h-[200px] pr-12 resize-none bg-secondary/30 border-border/50 focus:border-primary/50 transition-colors"
-              disabled={isProcessing}
-            />
-            <Button
-              type="submit"
-              size="icon"
-              disabled={!input.trim() || isProcessing}
-              className="absolute right-2 bottom-2 h-8 w-8 bg-gradient-to-r from-primary to-accent hover:opacity-90 transition-opacity shadow-lg shadow-primary/20"
-            >
-              {isProcessing ? (
-                <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              ) : (
-                <Send className="h-4 w-4" />
+            <div className="space-y-3">
+              {uploadedImage && (
+                <div className="relative inline-block p-2 bg-secondary/20 rounded-lg border border-border/30">
+                  <img
+                    src={uploadedImage}
+                    alt="Uploaded"
+                    className="max-w-xs max-h-32 rounded-md border border-border/20"
+                  />
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="destructive"
+                    className="absolute -top-2 -right-2 h-6 w-6 rounded-full"
+                    onClick={removeImage}
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
               )}
-            </Button>
-          </form>
+
+              {showCreateImageTab && (
+                <div className="mb-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="rounded-full px-3 py-1 bg-background/40 hover:bg-background/60 border border-border/30"
+                    onClick={handleCreateImageClick}
+                    disabled={isProcessing}
+                  >
+                    Create image
+                  </Button>
+                </div>
+              )}
+
+              <form onSubmit={handleSubmit} className="relative">
+                <div className="flex items-center gap-3 rounded-full border border-border/50 bg-secondary/30 px-3 py-2 transition-colors focus-within:border-primary/50">
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      className="h-9 w-9 rounded-full hover:bg-secondary/50"
+                      onClick={handlePlusButtonClick}
+                      disabled={isProcessing}
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
+
+                    {showImageUploadAction && (
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        className="h-9 w-9 rounded-full hover:bg-secondary/50"
+                        onClick={handleImageButtonClick}
+                        disabled={isProcessing}
+                      >
+                        <ImageIcon className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+
+                  <Textarea
+                    ref={textareaRef}
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder={uploadedImage ? "Describe what you want to know about this image..." : "Ask anything..."}
+                    className="flex-1 min-h-[48px] max-h-[160px] resize-none border-0 bg-transparent px-0 py-3 text-base focus-visible:ring-0 focus-visible:outline-none placeholder:flex placeholder:items-center placeholder:text-lg"
+                    disabled={isProcessing}
+                  />
+
+                  <Button
+                    type="submit"
+                    size="icon"
+                    disabled={(!input.trim() && !uploadedImage) || isProcessing}
+                    className="h-9 w-9 rounded-full bg-gradient-to-r from-primary to-accent hover:opacity-90 transition-opacity shadow-lg shadow-primary/20"
+                  >
+                    {isProcessing ? (
+                      <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      <Send className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageUpload}
+                  className="hidden"
+                />
+              </form>
+            </div>
           <p className="text-xs text-muted-foreground mt-2 text-center">
             YouTube Agent can make mistakes. Verify important information.
           </p>
