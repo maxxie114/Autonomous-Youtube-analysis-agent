@@ -13,6 +13,7 @@ export interface WorkflowStep {
 export interface AgentResponse {
   content: string;
   reasoning?: string[];
+  toolsUsed?: string[];
   channels?: Array<{
     name: string;
     subscribers: string;
@@ -97,6 +98,7 @@ class AceService {
           let done = false;
           let buffer = '';
           let lastData: string | null = null;
+          let lastGood: any | null = null;
 
           while (!done) {
             // read chunk
@@ -116,20 +118,49 @@ class AceService {
                 if (line.startsWith('data:')) {
                   const payload = line.replace(/^data:\s*/, '');
                   lastData = payload;
+                  try {
+                    const maybe = JSON.parse(payload);
+                    // Heuristic: keep the last meaningful content event, not error/meta
+                    const hasAnswer = typeof maybe?.answer === 'string' && maybe.answer.trim().length > 0;
+                    const hasChannels = Array.isArray(maybe?.channels) && maybe.channels.length > 0;
+                    const hasGenerator = !!maybe?.actions?.stateDelta?.generator_output;
+                    const hasContentParts = Array.isArray(maybe?.content?.parts) && maybe.content.parts.length > 0;
+                    const isErrorOnly = (!!maybe?.errorCode || !!maybe?.finishReason) && !hasAnswer && !hasChannels && !hasGenerator && !hasContentParts;
+                    if (!isErrorOnly && (hasAnswer || hasChannels || hasGenerator || hasContentParts)) {
+                      lastGood = maybe;
+                    }
+                  } catch {
+                    // ignore parse error for interim lines
+                  }
                 }
               }
             }
           }
 
            // parse lastData if present
+           // prefer last meaningful event if available
+           if (lastGood) {
+             try {
+               return this.formatResponse(lastGood);
+             } catch (fmtErr) {
+               console.error('[aceService] formatResponse error (lastGood)', fmtErr, { lastGood });
+               return { content: 'Agent returned unexpected format', channels: [], workflow: [] };
+             }
+           }
            if (lastData) {
              try {
                const parsed = JSON.parse(lastData);
-               try {
-                 return this.formatResponse(parsed);
-               } catch (fmtErr) {
-                 console.error('[aceService] formatResponse error', fmtErr, { parsed });
-                 return { content: 'Agent returned unexpected format', channels: [], workflow: [] };
+               // If the last event is only an error/meta frame without content, try full-body JSON below
+               const hasAnyContent = typeof parsed?.answer === 'string' || Array.isArray(parsed?.channels) || parsed?.actions?.stateDelta?.generator_output || (Array.isArray(parsed?.content?.parts) && parsed.content.parts.length > 0);
+               if (!hasAnyContent && (parsed?.errorCode || parsed?.finishReason)) {
+                 // fall through to JSON body read
+               } else {
+                 try {
+                   return this.formatResponse(parsed);
+                 } catch (fmtErr) {
+                   console.error('[aceService] formatResponse error', fmtErr, { parsed });
+                   return { content: 'Agent returned unexpected format', channels: [], workflow: [] };
+                 }
                }
              } catch (e) {
                // If parsing fails, fall through to try full-body JSON below
@@ -275,6 +306,7 @@ class AceService {
       }
 
       const reasoningArr: string[] = [];
+      const toolsArr: string[] = [];
       if (output && typeof output === 'object') {
         if (Array.isArray(output.reasoning)) {
           for (const r of output.reasoning) {
@@ -286,6 +318,18 @@ class AceService {
           for (const r of output.usageReasoning) {
             if (typeof r === 'string') reasoningArr.push(r);
             else reasoningArr.push(JSON.stringify(r));
+          }
+        }
+        // tools used
+        if (Array.isArray((output as any).tools_used)) {
+          for (const t of (output as any).tools_used) {
+            if (typeof t === 'string') toolsArr.push(t);
+            else toolsArr.push(JSON.stringify(t));
+          }
+        } else if (Array.isArray((output as any).toolsUsed)) {
+          for (const t of (output as any).toolsUsed) {
+            if (typeof t === 'string') toolsArr.push(t);
+            else toolsArr.push(JSON.stringify(t));
           }
         }
         // If nested JSON provided additional reasoning, try to parse and merge
@@ -307,6 +351,24 @@ class AceService {
             })();
             if (nested && nested.length) {
               for (const r of nested) reasoningArr.push(r);
+            }
+            // nested tools
+            const nestedTools = ((): string[] | undefined => {
+              const t = contentText.trim();
+              if (t.startsWith('{') || t.startsWith('[')) {
+                try {
+                  const p = JSON.parse(t);
+                  if (p && typeof p === 'object' && Array.isArray((p as any).tools_used)) {
+                    return (p as any).tools_used.map((x: any) => (typeof x === 'string' ? x : JSON.stringify(x)));
+                  }
+                } catch (e) {
+                  // ignore
+                }
+              }
+              return undefined;
+            })();
+            if (nestedTools && nestedTools.length) {
+              for (const t of nestedTools) toolsArr.push(t);
             }
           }
         } catch (e) {
@@ -362,6 +424,7 @@ class AceService {
         channels: finalChannels || [],
         workflow: [],
         reasoning: reasoningArr.length ? reasoningArr : undefined,
+        toolsUsed: toolsArr.length ? toolsArr : undefined,
       };
     }
     
@@ -375,21 +438,126 @@ class AceService {
       return undefined;
     })();
 
-    // If the top-level response includes an `answer` field, prefer it.
+    const topTools: string[] | undefined = (() => {
+      if (data && typeof data === 'object') {
+        if (Array.isArray((data as any).tools_used)) return (data as any).tools_used.map((t: any) => (typeof t === 'string' ? t : JSON.stringify(t)));
+        if (Array.isArray((data as any).toolsUsed)) return (data as any).toolsUsed.map((t: any) => (typeof t === 'string' ? t : JSON.stringify(t)));
+      }
+      return undefined;
+    })();
+
+    // If the top-level response includes an `answer` field, prefer it and also
+    // try parsing channels from the answer markdown into structured data.
     if (data && typeof data === 'object' && typeof data.answer === 'string') {
+      const answerText = data.answer as string;
+      const parseChannelsFromText = (text: string) => {
+        if (!text) return undefined;
+        const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+        const channels: any[] = [];
+        for (const line of lines) {
+          if (!/^[-*+]/.test(line)) continue; // only parse bullet lines
+          const bullet = line.replace(/^[-*+]+\s*/, '');
+          const noBold = bullet.replace(/\*\*(.*?)\*\*/g, '$1').replace(/\*(.*?)\*/g, '$1');
+          // Pattern: Name (COUNT subscribers): description
+          const m1 = noBold.match(/^(.*?)\s*\(([^)]+?)\)\s*:(.*)$/);
+          if (m1) {
+            const name = m1[1].trim();
+            const subs = m1[2].replace(/\s*subscribers?\s*/i, '').trim();
+            channels.push({ name, subscribers: subs || m1[2].trim(), totalViews: '', videoCount: 0, channelId: name });
+            continue;
+          }
+          // Pattern: Name (COUNT subscribers)
+          const m2 = noBold.match(/^(.*?)\s*\(([^)]+?)\)\s*$/);
+          if (m2) {
+            const name = m2[1].trim();
+            const subs = m2[2].replace(/\s*subscribers?\s*/i, '').trim();
+            channels.push({ name, subscribers: subs || m2[2].trim(), totalViews: '', videoCount: 0, channelId: name });
+            continue;
+          }
+          // Pattern: Name: COUNT subscribers
+          const colonIdx = noBold.indexOf(':');
+          if (colonIdx > 0) {
+            const name = noBold.slice(0, colonIdx).trim();
+            const rest = noBold.slice(colonIdx + 1).trim();
+            const subsOnly = rest.replace(/\s*subscribers?\s*/i, '').trim();
+            channels.push({ name, subscribers: subsOnly || rest, totalViews: '', videoCount: 0, channelId: name });
+            continue;
+          }
+        }
+        return channels.length ? channels : undefined;
+      };
+
+      const parsedChannels = parseChannelsFromText(answerText);
+      const finalContent = parsedChannels && parsedChannels.length ? `${parsedChannels.length} channels found:` : answerText;
       return {
-        content: data.answer,
-        channels: data.channels || [],
+        content: finalContent,
+        channels: parsedChannels || data.channels || [],
         workflow: data.workflow || [],
         reasoning: topReasoning,
+        toolsUsed: topTools,
       };
     }
 
+    // Fallback path: if `data` or extracted text looks like a JSON string, prefer its `answer`
+    let fallbackContent = extractText(data) || 'Processing complete';
+    let fallbackReasoning = topReasoning;
+    let fallbackTools = topTools;
+    try {
+      const trimmed = typeof fallbackContent === 'string' ? fallbackContent.trim() : '';
+      if (trimmed && (trimmed.startsWith('{') || trimmed.startsWith('['))) {
+        const parsed = JSON.parse(trimmed);
+        if (parsed && typeof parsed === 'object') {
+          if (typeof parsed.answer === 'string') fallbackContent = parsed.answer;
+          if (!fallbackReasoning && Array.isArray(parsed.reasoning)) fallbackReasoning = parsed.reasoning.map((r: any) => (typeof r === 'string' ? r : JSON.stringify(r)));
+          if (!fallbackTools && Array.isArray(parsed.tools_used)) fallbackTools = parsed.tools_used.map((t: any) => (typeof t === 'string' ? t : JSON.stringify(t)));
+        }
+      }
+    } catch {}
+
+    // Try to derive channels from fallbackContent as well
+    const parseChannelsFromText2 = (text: string) => {
+      if (!text) return undefined;
+      const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      const channels: any[] = [];
+      for (const line of lines) {
+        if (!/^[-*+]/.test(line)) continue;
+        const bullet = line.replace(/^[-*+]+\s*/, '');
+        const noBold = bullet.replace(/\*\*(.*?)\*\*/g, '$1').replace(/\*(.*?)\*/g, '$1');
+        const m1 = noBold.match(/^(.*?)\s*\(([^)]+?)\)\s*:(.*)$/);
+        if (m1) {
+          const name = m1[1].trim();
+          const subs = m1[2].replace(/\s*subscribers?\s*/i, '').trim();
+          channels.push({ name, subscribers: subs || m1[2].trim(), totalViews: '', videoCount: 0, channelId: name });
+          continue;
+        }
+        const m2 = noBold.match(/^(.*?)\s*\(([^)]+?)\)\s*$/);
+        if (m2) {
+          const name = m2[1].trim();
+          const subs = m2[2].replace(/\s*subscribers?\s*/i, '').trim();
+          channels.push({ name, subscribers: subs || m2[2].trim(), totalViews: '', videoCount: 0, channelId: name });
+          continue;
+        }
+        const colonIdx = noBold.indexOf(':');
+        if (colonIdx > 0) {
+          const name = noBold.slice(0, colonIdx).trim();
+          const rest = noBold.slice(colonIdx + 1).trim();
+          const subsOnly = rest.replace(/\s*subscribers?\s*/i, '').trim();
+          channels.push({ name, subscribers: subsOnly || rest, totalViews: '', videoCount: 0, channelId: name });
+          continue;
+        }
+      }
+      return channels.length ? channels : undefined;
+    };
+
+    const parsedChannels2 = parseChannelsFromText2(fallbackContent);
+    const finalContent2 = parsedChannels2 && parsedChannels2.length ? `${parsedChannels2.length} channels found:` : fallbackContent;
+
     return {
-      content: extractText(data) || 'Processing complete',
-      channels: data.channels || [],
+      content: finalContent2,
+      channels: parsedChannels2 || data.channels || [],
       workflow: data.workflow || [],
-      reasoning: topReasoning,
+      reasoning: fallbackReasoning,
+      toolsUsed: fallbackTools,
     };
   }
 

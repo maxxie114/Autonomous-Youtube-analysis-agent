@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from "react";
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ChatMessage } from "@/components/ChatMessage";
@@ -15,6 +17,7 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   reasoning?: string[];
+  toolsUsed?: string[];
   image?: string;
   workflow?: Array<{
     id: string;
@@ -159,6 +162,8 @@ const Index = () => {
               content: response.content,
               channels: response.channels,
               workflow: response.workflow,
+              reasoning: response.reasoning,
+              toolsUsed: response.toolsUsed,
             };
           }
           return msg;
@@ -276,13 +281,30 @@ const Index = () => {
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
                   </div>
                       {message.reasoning && message.reasoning.length > 0 && (
-                        <div className="mt-3 p-3 bg-muted/20 rounded-md border border-border/20">
-                          <h4 className="text-sm font-semibold mb-1">Reasoning</h4>
-                          <div className="text-sm text-muted-foreground whitespace-pre-wrap">
-                            {message.reasoning.map((r, idx) => (
-                              <p key={idx} className="mb-1">{r}</p>
-                            ))}
-                          </div>
+                        <div className="mt-3">
+                          <Accordion type="single" collapsible className="w-full">
+                            <AccordionItem value="reasoning">
+                              <AccordionTrigger className="text-sm">Reasoning</AccordionTrigger>
+                              <AccordionContent>
+                                <div className="text-sm text-muted-foreground space-y-2">
+                                  {message.reasoning.map((r, idx) => (
+                                    <p key={idx} className="leading-relaxed">{r}</p>
+                                  ))}
+                                </div>
+                              </AccordionContent>
+                            </AccordionItem>
+                          </Accordion>
+                        </div>
+                      )}
+
+                      {message.toolsUsed && message.toolsUsed.length > 0 && (
+                        <div className="mt-3 flex items-center gap-2 flex-wrap">
+                          <span className="text-xs text-muted-foreground">Tools:</span>
+                          {message.toolsUsed.map((t, idx) => (
+                            <Badge key={`${t}-${idx}`} variant="secondary" className="text-xs">
+                              {t}
+                            </Badge>
+                          ))}
                         </div>
                       )}
                   
