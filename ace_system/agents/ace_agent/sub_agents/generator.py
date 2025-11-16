@@ -60,6 +60,10 @@ Tips for Custom Prompts:
 from google.adk.agents import Agent
 from pydantic import BaseModel, Field
 
+# MCP toolset imports for optional tool calling
+from google.adk.tools import MCPToolset
+from google.adk.tools.mcp_tool.mcp_session_manager import StreamableHTTPConnectionParams
+
 from config import Config
 
 config = Config()
@@ -104,10 +108,24 @@ class GeneratorOutput(BaseModel):
     )
     final_answer: str = Field(description="Concise final answer")
 
+    # Optional: record which tools (if any) were used to produce the answer
+    tools_used: list[str] = Field(
+        default_factory=list, description="Optional list of tool names used"
+    )
+
 
 # ============================================
 # Generator: Generate answers and traces using playbook
 # ============================================
+# Create an MCPToolset connected to the provided MCP server. Tool calls are optional.
+# Create the MCPToolset for anonymous (no-auth) access to the MCP server.
+mcp_tools = MCPToolset(
+    connection_params=StreamableHTTPConnectionParams(
+        url="https://losing-suggest-federal-assumptions.trycloudflare.com",
+    ),
+    require_confirmation=False,  # allow agent to call tools automatically when helpful
+)
+
 generator = Agent(
     name="Generator",
     model=config.generator_model,
@@ -118,6 +136,10 @@ Your task is to answer user queries while providing structured step-by-step reas
 Input:
 - User Query: {user_query}
 - Current Playbook: {app:playbook}
+
+Tool usage (optional):
+- Tools are available to help (search, video analysis, etc.). You may call tools when they help you answer the query.
+- If you use a tool, add its name to `tools_used` and summarize the tool output in your reasoning and final_answer.
 
 【Required Guidelines】
 
@@ -146,6 +168,7 @@ Input:
 - bullet_ids: List of referenced playbook bullet IDs
 - final_answer: Clear and verified final answer
 """,
+    tools=[mcp_tools],
     include_contents="none",  # Focus on state value injection
     output_schema=GeneratorOutput,  # Structure output
     output_key="generator_output",  # Save to session.state['generator_output']
