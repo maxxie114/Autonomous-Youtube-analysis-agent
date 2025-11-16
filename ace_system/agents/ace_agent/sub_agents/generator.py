@@ -59,6 +59,8 @@ Tips for Custom Prompts:
 
 from google.adk.agents import Agent
 from pydantic import BaseModel, Field
+from google.adk.tools import MCPToolset
+from google.adk.tools.mcp_tool.mcp_session_manager import StreamableHTTPConnectionParams
 
 # MCP toolset imports for optional tool calling
 from google.adk.tools import MCPToolset
@@ -99,14 +101,19 @@ Respond with a compact JSON object:
 # -------------------------
 # 1) Generator output schema
 # -------------------------
+class ChannelInfo(BaseModel):
+    name: str = Field(description="Channel name")
+    subscribers: str = Field(description="Number of subscribers")
+    totalViews: str = Field(description="Total views")
+    videoCount: int = Field(description="Number of videos")
+    channelId: str = Field(description="YouTube channel ID")
+
 class GeneratorOutput(BaseModel):
     reasoning: list[str] = Field(
-        description="Provide step-by-step reasoning process in the format of [step-by-step thought process / reasoning process / detailed analysis and calculation]"
+        description="Provide step-by-step reasoning process for the YouTube search and analysis"
     )
-    bullet_ids: list[str] = Field(
-        default_factory=list, description="List of playbook bullet IDs referenced"
-    )
-    final_answer: str = Field(description="Concise final answer")
+    content: str = Field(description="Response content explaining the results")
+    channels: list[ChannelInfo] = Field(description="List of found YouTube channels")
 
     # Optional: record which tools (if any) were used to produce the answer
     tools_used: list[str] = Field(
@@ -129,13 +136,11 @@ mcp_tools = MCPToolset(
 generator = Agent(
     name="Generator",
     model=config.generator_model,
-    description="Solve problems by referencing the playbook and return structured final answers.",
+    description="Searches and analyzes YouTube channels based on user queries.",
     instruction="""
-Your task is to answer user queries while providing structured step-by-step reasoning and the bullet IDs you used.
+Your task is to search for and analyze YouTube channels based on the user's query.
 
-Input:
-- User Query: {user_query}
-- Current Playbook: {app:playbook}
+User Query: {user_query}
 
 Tool usage (optional):
 - Tools are available to help (search, video analysis, etc.). You may call tools when they help you answer the query.
@@ -143,30 +148,22 @@ Tool usage (optional):
 
 【Required Guidelines】
 
-1. Carefully read the playbook and apply relevant strategies, formulas, and insights
-   - Check all bullet points in the playbook
-   - Understand the context and application conditions of each strategy
+1. Analyze the user's query to understand what type of YouTube channels they're looking for.
+2. Use the available YouTube tools to search for channels that match the criteria.
+3. Use channel analysis tools to get detailed statistics for the found channels.
+4. Format the results with channel names, subscriber counts, total views, video counts, and channel IDs.
+5. Provide a helpful summary of the search results.
 
-2. Carefully examine common failures (anti-patterns) listed in the playbook and avoid them
-   - Present specific alternatives or best practices
-
-3. Show the reasoning process step by step
-   - Clearly indicate which bullets you referenced at each stage
-   - Structure so that the logic flow is clear
-
-4. Create thorough but concise analysis
-   - Include only essential information, but include all central evidence
-   - Avoid unnecessary repetition
-
-5. Review calculations and logic before providing the final answer
-   - Confirm that all referenced bullet_ids were actually used
-   - Check for logical contradictions
-   - Double-check that you haven't missed any relevant playbook bullets
+【Available Tools】
+You have access to YouTube search and analysis tools that can help you:
+- Search for channels by keywords
+- Get channel statistics and analytics
+- Analyze video content and performance
 
 【Output Rules】
-- reasoning: Step-by-step thought process (step-by-step chain of thought), detailed analysis and calculations
-- bullet_ids: List of referenced playbook bullet IDs
-- final_answer: Clear and verified final answer
+- reasoning: Step-by-step thought process for how you searched and analyzed the channels.
+- content: A summary message explaining what you found and how many channels match the criteria.
+- channels: A list of channel objects with name, subscribers, totalViews, videoCount, and channelId.
 """,
     tools=[mcp_tools],
     include_contents="none",  # Focus on state value injection
