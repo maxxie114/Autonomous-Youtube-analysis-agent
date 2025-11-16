@@ -2,6 +2,7 @@ import logging
 
 import uvicorn
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from google.adk.cli.fast_api import get_fast_api_app
 
 from config import Config
@@ -21,15 +22,24 @@ app: FastAPI = get_fast_api_app(
     reload_agents=config.reload_agents,
 )
 
+# Add CORS middleware to allow frontend connections
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:8080", "http://127.0.0.1:8080"],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
+)
+
 
 def main():
     """Start the FastAPI server."""
-    logger.info("Starting ACE-ADK server on http://0.0.0.0:8080")
+    logger.info("Starting ACE-ADK server on http://0.0.0.0:8081")
     logger.info(f"Agent directory: {config.agent_dir}")
     logger.info(f"Web interface: {config.serve_web_interface}")
     logger.info(f"Reload agents: {config.reload_agents}")
     
-    uvicorn.run(app, host="0.0.0.0", port=8080)
+    uvicorn.run(app, host="0.0.0.0", port=8081)
 
 
 if __name__ == "__main__":

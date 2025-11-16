@@ -60,6 +60,7 @@ Tips for Custom Prompts:
 from google.adk.agents import Agent
 from pydantic import BaseModel, Field
 from google.adk.tools import MCPToolset
+from google.adk.tools.mcp_tool.mcp_session_manager import StreamableHTTPConnectionParams
 
 from config import Config
 
@@ -97,52 +98,59 @@ Respond with a compact JSON object:
 # -------------------------
 # 1) Generator output schema
 # -------------------------
+class ChannelInfo(BaseModel):
+    name: str = Field(description="Channel name")
+    subscribers: str = Field(description="Number of subscribers")
+    totalViews: str = Field(description="Total views")
+    videoCount: int = Field(description="Number of videos")
+    channelId: str = Field(description="YouTube channel ID")
+
 class GeneratorOutput(BaseModel):
     reasoning: list[str] = Field(
-        description="Provide step-by-step reasoning process in the format of [step-by-step thought process / reasoning process / detailed analysis and calculation]"
+        description="Provide step-by-step reasoning process for the YouTube search and analysis"
     )
-    title: str = Field(description="Generated title for the YouTube video")
-    description: str = Field(description="Generated description for the YouTube video")
-    tags: list[str] = Field(description="Generated tags for the YouTube video")
+    content: str = Field(description="Response content explaining the results")
+    channels: list[ChannelInfo] = Field(description="List of found YouTube channels")
 
 
 # ============================================
 # Generator: Generate answers and traces using playbook
 # ============================================
 youtube_tools = MCPToolset(
-    name="youtube_tools",
-    # Replace with the actual address of your MCP server
-    mcp_server_address="http://localhost:8080",
+    connection_params=StreamableHTTPConnectionParams(
+        url="http://localhost:3001"
+    ),
+    tool_name_prefix="youtube_"
 )
 
 
 generator = Agent(
     name="Generator",
     model=config.generator_model,
-    description="Analyzes YouTube video data and generates a title, description, and tags.",
+    description="Searches and analyzes YouTube channels based on user queries.",
     instruction="""
-Your task is to analyze the provided YouTube video data and generate a title, description, and tags.
+Your task is to search for and analyze YouTube channels based on the user's query.
 
-Input:
-- Transcript: {transcript}
-- Context: {context}
-- Description: {description}
-- Views: {views}
-- Subscribers: {subscribers}
+User Query: {user_query}
 
 【Required Guidelines】
 
-1.  Analyze the transcript and context to understand the video's content and message.
-2.  Use the available tools to research similar videos and identify effective titles, descriptions, and tags.
-3.  Generate a compelling title that is likely to attract viewers.
-4.  Write a detailed description that includes important keywords and a summary of the video.
-5.  Create a list of relevant tags that will help the video get discovered.
+1. Analyze the user's query to understand what type of YouTube channels they're looking for.
+2. Use the available YouTube tools to search for channels that match the criteria.
+3. Use channel analysis tools to get detailed statistics for the found channels.
+4. Format the results with channel names, subscriber counts, total views, video counts, and channel IDs.
+5. Provide a helpful summary of the search results.
+
+【Available Tools】
+You have access to YouTube search and analysis tools that can help you:
+- Search for channels by keywords
+- Get channel statistics and analytics
+- Analyze video content and performance
 
 【Output Rules】
-- reasoning: Step-by-step thought process for how you arrived at the title, description, and tags.
-- title: The generated title.
-- description: The generated description.
-- tags: A list of generated tags.
+- reasoning: Step-by-step thought process for how you searched and analyzed the channels.
+- content: A summary message explaining what you found and how many channels match the criteria.
+- channels: A list of channel objects with name, subscribers, totalViews, videoCount, and channelId.
 """,
     tools=[youtube_tools],
     include_contents="none",  # Focus on state value injection
