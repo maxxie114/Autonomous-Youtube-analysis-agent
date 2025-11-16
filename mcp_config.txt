@@ -1,0 +1,17 @@
+{
+    "type": "streamable-http",
+    "url": "http://localhost:3001",
+    "note": "For Streamable HTTP connections, add this URL directly in your MCP Client"
+}
+
+{
+    "mcpServers": {
+        "default-server": {
+            "type": "streamable-http",
+            "url": "http://localhost:3001",
+            "note": "For Streamable HTTP connections, add this URL directly in your MCP Client"
+        }
+    }
+}
+
+

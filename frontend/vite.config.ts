@@ -5,9 +5,17 @@ import { componentTagger } from "lovable-tagger";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
+  // Dev server and proxy configuration. Proxy `/adk/*` to ADK API server
   server: {
     host: "::",
-    port: 8080,
+    port: 5173,
+    proxy: {
+      '/adk': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/adk/, ''),
+      },
+    },
   },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
   resolve: {
