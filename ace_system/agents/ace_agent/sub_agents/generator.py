@@ -59,8 +59,6 @@ Tips for Custom Prompts:
 
 from google.adk.agents import Agent
 from pydantic import BaseModel, Field
-from google.adk.tools import MCPToolset
-from google.adk.tools.mcp_tool.mcp_session_manager import StreamableHTTPConnectionParams
 
 from config import Config
 
@@ -69,28 +67,27 @@ config = Config()
 
 # Default Generator prompt - produces answers using playbook strategies
 GENERATOR_PROMPT = """
-You are an expert YouTube video analyst. Your goal is to analyze the provided video details and generate a title, description, and tags for the video.
+You are an expert assistant that must solve the task using the provided playbook of strategies.
 
-Use the provided context, transcript, and metadata to inform your analysis. You have access to tools to help you research, upload and generate thumbnails for your video.
+Apply relevant bullets, avoid known mistakes, and show step-by-step reasoning.
 
-Analysis criteria:
-- The title should be catchy and relevant to the video content.
-- The description should be detailed and include relevant keywords.
-- The tags should be a mix of broad and specific keywords.
+Playbook:
+{playbook}
 
-Input:
-- Transcript: {transcript}
-- Context: {context}
-- Description: {description}
-- Views: {views}
-- Subscribers: {subscribers}
+Recent reflection:
+{reflection}
+
+Question:
+{question}
+
+Additional context:
+{context}
 
 Respond with a compact JSON object:
 {{
   "reasoning": "<step-by-step chain of thought>",
-  "title": "<generated title>",
-  "description": "<generated description>",
-  "tags": ["<tag1>", "<tag2>", "..."]
+  "bullet_ids": ["<id1>", "<id2>", "..."],
+  "final_answer": "<concise final answer>"
 }}
 """
 
@@ -102,54 +99,53 @@ class GeneratorOutput(BaseModel):
     reasoning: list[str] = Field(
         description="Provide step-by-step reasoning process in the format of [step-by-step thought process / reasoning process / detailed analysis and calculation]"
     )
-    title: str = Field(description="Generated title for the YouTube video")
-    description: str = Field(description="Generated description for the YouTube video")
-    tags: list[str] = Field(description="Generated tags for the YouTube video")
+    bullet_ids: list[str] = Field(
+        default_factory=list, description="List of playbook bullet IDs referenced"
+    )
+    final_answer: str = Field(description="Concise final answer")
 
 
 # ============================================
 # Generator: Generate answers and traces using playbook
 # ============================================
-youtube_tools = MCPToolset(
-    # Replace with the actual address of your MCP server.
-    # Newer ADK versions expect a `connection_params` object instead of
-    # `mcp_server_address`. Use StreamableHTTPConnectionParams for an
-    # HTTP(S) MCP server endpoint.
-    connection_params=StreamableHTTPConnectionParams(
-        url="https://dat-certification-costs-keyword.trycloudflare.com",
-    ),
-)
-
-
 generator = Agent(
     name="Generator",
     model=config.generator_model,
-    description="Analyzes YouTube video data and generates a title, description, and tags.",
+    description="Solve problems by referencing the playbook and return structured final answers.",
     instruction="""
-Your task is to analyze the provided YouTube video data and generate a title, description, and tags.
+Your task is to answer user queries while providing structured step-by-step reasoning and the bullet IDs you used.
 
 Input:
-- Transcript: {transcript}
-- Context: {context}
-- Description: {description}
-- Views: {views}
-- Subscribers: {subscribers}
+- User Query: {user_query}
+- Current Playbook: {app:playbook}
 
 【Required Guidelines】
 
-1.  Analyze the transcript and context to understand the video's content and message.
-2.  Use the available tools to research similar videos and identify effective titles, descriptions, and tags.
-3.  Generate a compelling title that is likely to attract viewers.
-4.  Write a detailed description that includes important keywords and a summary of the video.
-5.  Create a list of relevant tags that will help the video get discovered.
+1. Carefully read the playbook and apply relevant strategies, formulas, and insights
+   - Check all bullet points in the playbook
+   - Understand the context and application conditions of each strategy
+
+2. Carefully examine common failures (anti-patterns) listed in the playbook and avoid them
+   - Present specific alternatives or best practices
+
+3. Show the reasoning process step by step
+   - Clearly indicate which bullets you referenced at each stage
+   - Structure so that the logic flow is clear
+
+4. Create thorough but concise analysis
+   - Include only essential information, but include all central evidence
+   - Avoid unnecessary repetition
+
+5. Review calculations and logic before providing the final answer
+   - Confirm that all referenced bullet_ids were actually used
+   - Check for logical contradictions
+   - Double-check that you haven't missed any relevant playbook bullets
 
 【Output Rules】
-- reasoning: Step-by-step thought process for how you arrived at the title, description, and tags.
-- title: The generated title.
-- description: The generated description.
-- tags: A list of generated tags.
+- reasoning: Step-by-step thought process (step-by-step chain of thought), detailed analysis and calculations
+- bullet_ids: List of referenced playbook bullet IDs
+- final_answer: Clear and verified final answer
 """,
-    tools=[youtube_tools],
     include_contents="none",  # Focus on state value injection
     output_schema=GeneratorOutput,  # Structure output
     output_key="generator_output",  # Save to session.state['generator_output']
