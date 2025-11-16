@@ -1,6 +1,8 @@
 import { ReactNode } from "react";
 import { User, Bot } from "lucide-react";
 import { cn } from "@/lib/utils";
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface ChatMessageProps {
   role: "user" | "assistant";
@@ -34,7 +36,13 @@ export const ChatMessage = ({ role, children }: ChatMessageProps) => {
         </div>
       </div>
       <div className="flex-1 min-w-0 space-y-2 pt-1">
-        {children}
+        {/* children may be strings or React nodes; if content is a string
+            containing markdown we render it nicely */}
+        {typeof children === 'string' ? (
+          <ReactMarkdown remarkPlugins={[remarkGfm]} className="prose prose-sm max-w-none text-foreground" children={children} />
+        ) : (
+          children
+        )}
       </div>
     </div>
   );

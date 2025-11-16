@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect } from "react";
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ChatMessage } from "@/components/ChatMessage";
@@ -12,6 +14,7 @@ interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
+  reasoning?: string[];
   image?: string;
   workflow?: Array<{
     id: string;
@@ -269,7 +272,19 @@ const Index = () => {
                       />
                     </div>
                   )}
-                  <p className="text-foreground whitespace-pre-wrap">{message.content}</p>
+                  <div className="text-foreground whitespace-pre-wrap prose prose-sm max-w-none">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+                  </div>
+                      {message.reasoning && message.reasoning.length > 0 && (
+                        <div className="mt-3 p-3 bg-muted/20 rounded-md border border-border/20">
+                          <h4 className="text-sm font-semibold mb-1">Reasoning</h4>
+                          <div className="text-sm text-muted-foreground whitespace-pre-wrap">
+                            {message.reasoning.map((r, idx) => (
+                              <p key={idx} className="mb-1">{r}</p>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                   
                   {message.workflow && (
                     <div className="mt-4">
