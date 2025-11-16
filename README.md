@@ -48,41 +48,61 @@ This repository contains two ADK runtimes you can run during development:
 - The original ACE system under `ace_system/` (run using its own entrypoint: `python3 ace_system/main.py`).
 - A lightweight runner for the standalone agents in `adk_agents/` (`adk_runner.py`) which starts ADK on port `8082` and is convenient for frontend integration.
 
-To run the standalone ADK runner (recommended for the quick loop with frontend):
+To run the ADK API server (recommended for the quick loop with frontend):
+
+This project includes ADK agents under `adk_agents/`. Instead of using the local adk runner script, the ADK CLI provides a built-in API server you can run directly from that folder. The API server will serve the ADK HTTP API and developer UI (usually on port `8000`).
 
 ```bash
-# create & activate a venv, then install project deps (project may use poetry/requirements)
+# create & activate a venv, then install project deps if needed
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r ace_system/requirements.txt  # or use pyproject/poetry if present
+pip install -r ace_system/requirements.txt  # or use your project's pyproject/poetry workflow
 
-# Start the ADK runner (serves web UI + API on http://localhost:8082)
-python3 adk_runner.py
+# Start the ADK API server from the agents directory
+cd adk_agents
+adk api_server
+
+# By default the API server listens on http://localhost:8000
 ```
 
 Notes:
-- `adk_runner.py` configures CORS to allow common dev origins (including Vite 5173). If your frontend runs on a different host/port, add it to `allow_origins` in `adk_runner.py`.
-- The runner uses `adk_agents/` as the agents directory. The `youtube_agent` package in that folder exposes `root_agent` and is discovered by ADK on startup.
+- The official `adk api_server` is the supported way to serve your ADK agents in development; it exposes the same API endpoints the `adk web` UI uses and is the one exercised by `test_adk.py` in this repo.
+- If you previously used `adk_runner.py` it can still be used for some workflows, but this README and the frontend now expect the ADK API server started with `adk api_server` (default host `http://localhost:8000`).
+- If your frontend runs on a different host/port, make sure the ADK API server CORS configuration allows your frontend origin.
 
 ### Inspect available apps and test endpoints
 
 List registered apps (to discover the correct app id to call from the frontend):
 
 ```bash
-curl http://localhost:8082/apps
+curl http://localhost:8000/apps
 ```
 
-Create a session (example):
+Create a session (example) — this repo's `test_adk.py` demonstrates creating a session that includes an explicit session id in the path:
 
 ```bash
-curl -X POST "http://localhost:8082/apps/<app-id>/users/frontend-user/sessions" -H "Content-Type: application/json" -d '{}'
+# Using an explicit session id in the path (test_adk.py style)
+curl -X POST "http://localhost:8000/apps/<app-id>/users/<user-id>/sessions/<session-id>" -H "Content-Type: application/json" -d '{}'
 ```
 
-Send a message to the agent:
+Send a message to the agent (streaming):
 
 ```bash
-curl -X POST "http://localhost:8082/run" -H "Content-Type: application/json" -d '{"appName":"<app-id>","userId":"frontend-user","sessionId":"<session-id>","newMessage":{"parts":[{"text":"Who is the top Python channel?"}]}}'
+curl -N -X POST "http://localhost:8000/run_sse" \
+	-H "Content-Type: application/json" \
+	-d '{
+		"appName": "<app-id>",
+		"userId": "<user-id>",
+		"sessionId": "<session-id>",
+		"newMessage": {
+			"role": "user",
+			"parts": [{ "text": "Who is the top Python channel?" }]
+		},
+		"streaming": true
+	}'
 ```
+
+The server will stream Server-Sent Events (SSE) prefixed with `data:` lines; see `test_adk.py` for an example script that connects and prints those `data:` lines.
 
 ## Configuring MCP servers (agent-tools)
 
