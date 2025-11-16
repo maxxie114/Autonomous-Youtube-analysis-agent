@@ -179,13 +179,4 @@ Example systemd snippet to run `adk api_server` via a shell script or venv-manag
 
 ## License
 
-MIT — update `LICENSE` file as needed.
-
----
-
-If you want, I can next:
-
-- Add an `README` example `docker-compose.yml` for local dev.
-- Patch the frontend to read ADK base URL from an environment variable.
-
-Tell me which and I'll apply it.
+- MIT License
