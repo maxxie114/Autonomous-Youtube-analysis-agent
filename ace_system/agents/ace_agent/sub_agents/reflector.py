@@ -187,7 +187,7 @@ Input:
     include_contents="none",
     output_schema=Reflection,
     output_key="reflector_output",  # session.state['reflector_output']
-    disallow_transfer_to_parent=True,
+    disallow_transfer_to_parent=False,
     disallow_transfer_to_peers=True,
 )
 
