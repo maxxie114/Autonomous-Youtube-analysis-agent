@@ -1,2 +1,5 @@
 .env
 *.pyc
+node_modules
+client_secret.json
+youtube-token.json
