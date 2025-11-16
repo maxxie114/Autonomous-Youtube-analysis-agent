@@ -134,6 +134,41 @@ adk api_server
 
 This starts the ADK API server (default `http://localhost:8000`) which the frontend uses for sessions and streaming.
 
+If you don't have the ADK CLI installed, follow the ADK project's installation instructions. A few options:
+
+- Install via the ADK project's recommended installer (see the project's README):
+
+```bash
+# Example (follow upstream docs for exact commands):
+# git clone https://github.com/google/ai-controllers.git
+# cd ai-controllers
+# python3 -m venv .venv && source .venv/bin/activate
+# pip install -e .
+```
+
+- Or follow the ADK distribution docs for your environment. The ADK API server is
+	typically started with `adk api_server` from the agents directory once installed.
+
+If ADK is available as a pip package in your environment, you may add it to
+`requirements.txt` (example commented placeholder is included there).
+
+Using `uv` instead of pip
+
+If you prefer `uv` (Astral) for environment and package management instead of `pip` and
+`requirements.txt`, you can install it and use it to provision the project. Example steps:
+
+```bash
+# Install `uv` (follow upstream docs for the latest install method):
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# After installing, follow your `uv` workflow to install dependencies for this repo
+# (for example, `uv install` if using a `uv` manifest/lockfile). If you rely on
+# pip-style installs, `requirements.txt` is still available as a fallback.
+```
+
+Note: `uv` is a separate tool and may manage environments differently from a simple
+`pip -r requirements.txt` workflow. Use whichever tool fits your team's workflow.
+
 3) Start the frontend
 
 ```bash
