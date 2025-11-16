@@ -23,12 +23,43 @@ export interface AgentResponse {
 }
 
 class AceService {
-  private baseUrl = 'http://localhost:8081';
+  private baseUrl = 'http://localhost:8082';
+
+  private async getAppId(): Promise<string> {
+    try {
+      const res = await fetch(`${this.baseUrl}/apps`);
+      if (!res.ok) {
+        throw new Error(`Failed to list apps: ${res.status}`);
+      }
+
+      const apps = await res.json();
+      if (!Array.isArray(apps) || apps.length === 0) {
+        throw new Error('No apps found on ADK server');
+      }
+
+      // Prefer a youtube or ace app if present
+      const preferred = apps.find((a: any) => {
+        const id = String(a.id || '').toLowerCase();
+        const name = String(a.name || '').toLowerCase();
+        return id.includes('youtube') || name.includes('youtube') || id.includes('ace') || name.includes('ace');
+      });
+
+      if (preferred) return preferred.id || preferred.name;
+
+      // fallback to the first app id
+      return apps[0].id || apps[0].name;
+    } catch (err) {
+      console.warn('Could not auto-detect app id, falling back to "ace_agent"', err);
+      return 'ace_agent';
+    }
+  }
 
   async sendRequest(request: AgentRequest): Promise<AgentResponse> {
     try {
+      // Determine app id and create a session
+      const appId = await this.getAppId();
       // First create a session
-      const sessionResponse = await fetch(`${this.baseUrl}/apps/ace_agent/users/frontend-user/sessions`, {
+      const sessionResponse = await fetch(`${this.baseUrl}/apps/${encodeURIComponent(appId)}/users/frontend-user/sessions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -50,7 +81,7 @@ class AceService {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          appName: 'ace_agent',
+          appName: appId || 'ace_agent',
           userId: 'frontend-user',
           sessionId: sessionId,
           newMessage: {
