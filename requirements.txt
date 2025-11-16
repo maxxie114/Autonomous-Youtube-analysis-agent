@@ -1,0 +1,30 @@
+# Top-level Python requirements for development.
+# Edit and add packages required by your ADK agents before running `pip install -r requirements.txt`.
+
+# Web / server
+fastapi>=0.95.0
+uvicorn[standard]>=0.22.0
+
+# HTTP and env parsing
+requests>=2.28.0
+python-dotenv>=1.0.0
+
+# Optional: add ADK-related packages your environment needs (update as necessary)
+# google-adk-package-name==x.y.z
+
+# ADK CLI / dev server note:
+# The ADK CLI/API server (used for `adk api_server`) is often distributed separately
+# and may not be available as a pip package. Follow the ADK project's installation
+# instructions instead of adding an unknown package here. Example installation docs:
+# https://github.com/google/ai-controllers
+# If you have a pip-installable ADK package for your environment, add it here, e.g.:
+# adk-cli==X.Y.Z
+
+# Alternative package manager: `uv` (Astral)
+# If you'd prefer `uv` for environment/package management instead of pip/requirements.txt,
+# install it with the project's installer and use it to provision the environment.
+# Example (follow upstream docs for exact commands):
+#   curl -LsSf https://astral.sh/uv/install.sh | sh
+# After installing `uv`, run the appropriate `uv` command to install packages (e.g. `uv install`)
+# or follow your `uv` workflow. This repository keeps a `requirements.txt` for users who
+# prefer pip-based installs.

@@ -1,0 +1,26 @@
+[project]
+name = "autonomous-youtube-analysis-agent"
+version = "0.1.0"
+description = "ADK agents and tooling for YouTube analysis (development repository)."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [ { name = "maxxie114" } ]
+
+dependencies = [
+  "fastapi>=0.95.0",
+  "uvicorn[standard]>=0.22.0",
+  "requests>=2.28.0",
+  "python-dotenv>=1.0.0",
+]
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+# Notes:
+# - This `pyproject.toml` uses PEP 621-style metadata and a setuptools build backend.
+# - It lists the runtime dependencies used in `requirements.txt` so tools like `uv`
+#   (Astral) or other PEP-517-aware tools can consume the project metadata.
+# - If you use a different build backend (hatchling, poetry) replace the
+#   `[build-system]` section accordingly.
