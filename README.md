@@ -184,6 +184,121 @@ sudo lsof -iTCP:3001 -sTCP:LISTEN -Pn
 sudo kill <PID>
 ```
 
+## Running MCP, frontend, and ADK together
+
+This project contains three separate services you commonly run together during development:
+
+- MCP / tools server: `agent-tools` (Node)
+- Frontend: `frontend` (Vite / React)
+- ADK agent runtime: `adk_runner.py` (Python / ADK)
+
+Recommended startup order:
+
+1. Start the MCP / tools server so the tools are available to the agent.
+2. Start the ADK runner so agents can call the MCP endpoints.
+3. Start the frontend to connect to the running ADK API.
+
+Individual start commands
+
+- Start the MCP tools server (from project root):
+
+```bash
+cd agent-tools
+npm install
+npm run dev
+```
+
+- Start the ADK runner (from project root):
+
+```bash
+# ensure your Python venv is activated and ADK deps are installed
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r ace_system/requirements.txt
+python3 adk_runner.py
+```
+
+- Start the frontend (from project root):
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Quick combined startup options
+
+Option A — tmux (recommended for local dev):
+
+```bash
+# create a tmux session and start each service in its own pane
+tmux new-session -d -s ytagent \
+	"cd agent-tools && npm run dev" \; \
+split-window -h "source .venv/bin/activate && python3 adk_runner.py" \; \
+split-window -v "cd frontend && npm run dev" \; \
+attach
+```
+
+Option B — `concurrently` (single terminal, requires globally installed package or npm script):
+
+```bash
+# from project root (install concurrently first: npm i -g concurrently)
+concurrently "cd agent-tools && npm run dev" "source .venv/bin/activate && python3 adk_runner.py" "cd frontend && npm run dev"
+```
+
+Option C — simple background script (example `start-all.sh`):
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Load project-level .env if present
+if [ -f .env ]; then
+	# This exports variables like GOOGLE_API_KEY and MCP_EXTRA_HEADERS for child processes
+	set -o allexport; source .env; set +o allexport
+fi
+
+# Start agent-tools
+(cd agent-tools && npm install && npm run dev) &
+PID_AGENT_TOOLS=$!
+
+# Start ADK runner (assumes venv already created)
+(source .venv/bin/activate && python3 adk_runner.py) &
+PID_ADK=$!
+
+# Start frontend
+(cd frontend && npm install && npm run dev) &
+PID_FRONTEND=$!
+
+echo "Started agent-tools($PID_AGENT_TOOLS) adk($PID_ADK) frontend($PID_FRONTEND)"
+wait
+```
+
+Notes:
+- These examples are for local development convenience only. For production deployments use dedicated process managers (systemd, docker-compose, Kubernetes, etc.).
+
+## `.env` files and precedence
+
+This repository contains multiple `.env` files in sub-projects and you may also have a top-level `.env`. Here are recommended conventions:
+
+- **Top-level `.env` (project root):** place shared/secrets that apply to all services (e.g., `GOOGLE_API_KEY`, `GENERATOR_MODEL`, `MCP_EXTRA_HEADERS` if tool headers are shared).
+- **Subproject `.env` (optional):** each subproject (e.g., `agent-tools/`, `frontend/`, `ace_system/`) may have its own `.env` for local overrides (ports, local-only flags). Treat subproject `.env` as *overrides* for values in the top-level `.env`.
+
+How to load envs consistently:
+
+- When running a service from its directory (e.g., `cd frontend && npm run dev`), that process may load `frontend/.env` automatically (Vite does) or you can explicitly source the top-level `.env` first:
+
+```bash
+# from project root
+set -o allexport; source .env; set +o allexport
+cd frontend && npm run dev
+```
+
+- For Python processes (ADK runner), ensure your shell environment contains the variables before starting the runner (see the `start-all.sh` example above). The ADK runner will use the environment variables available in its process.
+
+Security note: do not commit `.env` files with secrets to git. Add `.env` to `.gitignore` and use secret managers for production.
+
+
 ## Files of interest
 
 - `adk_agents/youtube_agent/agent.py` — standalone youtube agent (root_agent) and MCPToolset configuration.
