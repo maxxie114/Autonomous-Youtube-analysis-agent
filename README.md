@@ -1,217 +1,124 @@
 # Autonomous YouTube Analysis Agent
 
-An ADK-based agent suite that analyzes YouTube channels and videos. This repository contains:
+AI-driven YouTube channel & video analysis with ADK agents, FrontMCP tools, and a React frontend.
 
-- `ace_system/` — the original ACE agent system and generator sub-agents.
-- `adk_agents/` — a lightweight, ADK-discoverable standalone `youtube_agent` (exporting `root_agent`).
-- `frontend/` — React + Vite frontend for interacting with the agent.
-- `adk_runner.py` — a small runner that starts the ADK FastAPI app against `adk_agents` (port 8082 by default).
+Demo video (click to play):
 
-This README provides a complete deployment and development guide: how to run the agent, wire MCP servers (tool endpoints), run the frontend, and common troubleshooting steps.
+[![Autonomous YouTube Analysis Agent Demo](https://img.youtube.com/vi/yaUn067vt-M/hqdefault.jpg)](https://youtu.be/yaUn067vt-M)
 
-**Table of contents**
+## Quick Links
+- ADK API server (dev): `http://localhost:8000`
+- Frontend (dev): `http://localhost:5173`
+- MCP tools server (dev): `http://localhost:3001`
+- Demo video (YouTube): https://youtu.be/yaUn067vt-M
 
-- Prerequisites
-- Environment configuration
-- Running the agent (development)
-- Configuring MCP servers (agent-tools)
-- Frontend (development & production)
-- Deployment notes
-- Troubleshooting
+## Overview
+This hackathon project showcases autonomous workflows for searching channels, analyzing videos, generating thumbnails & cover images, and optionally uploading content. It combines:
+- `adk_agents/` – ADK-discoverable `youtube_agent`
+- `agent-tools/` – Node MCP server exposing six YouTube-related tools (search, analysis, generation, upload)
+- `frontend/` – React + Vite UI with streaming SSE output & reasoning display
 
-## Prerequisites
+## Table of Contents
+1. Requirements
+2. Environment & Dynamic Auth Headers
+3. MCP Tools Catalog
+4. Local Development Workflow
+5. Dynamic FrontMCP Authentication (Detailed)
+6. Troubleshooting
+7. Contributing
+8. Hackathon Team
+9. License
 
-- Python 3.10+ (venv recommended)
-- Node.js (16+) / npm or pnpm for frontend
-- Local MCP server reachable by the agent (e.g. `http://localhost:3001`) or a remote MCP endpoint
-- Optional: an ADK-compatible LLM API key (if using cloud models)
+## 1. Requirements
+- Python 3.10+
+- Node.js 16+ (npm / pnpm / yarn)
+- ADK CLI installed (`pip install agent-adk` or per ADK docs)
+- Freepik API key (for image generation tools) if using thumbnail/cover features
+- Google / Gemini API key (if using Gemini models)
 
-## Environment configuration
-
-Copy or create a `.env` file in the project root with values your agents need. Example minimal `.env`:
-
+## 2. Environment & Dynamic Auth Headers
+Create a top-level `.env` (never commit secrets). Minimal example:
 ```bash
 GOOGLE_API_KEY=your-google-key
 GENERATOR_MODEL=gemini-2.5-flash
 SERVE_WEB_INTERFACE=true
 RELOAD_AGENTS=true
-# Optional: extra headers to include on MCP requests (JSON string)
-# MCP_EXTRA_HEADERS={"authorization":"Bearer <token>","x-mcp-proxy-auth":"Bearer <token>","mcp-protocol-version":"2025-06-18"}
+# Dynamic FrontMCP auth headers captured from MCP Inspector (example only)
+MCP_EXTRA_HEADERS={"authorization":"Bearer <ephemeral-token>","x-mcp-proxy-auth":"Bearer <ephemeral-token>","mcp-protocol-version":"2025-06-18"}
 ```
+`MCP_EXTRA_HEADERS` is REQUIRED when the MCP server (FrontMCP by Frontegg) mandates auth. Tokens are ephemeral; you must refresh them (see section 5).
 
-- The `MCP_EXTRA_HEADERS` env var is used by the standalone `adk_agents/youtube_agent/agent.py` to include extra request headers when calling the MCP server (useful if your MCP requires auth headers or custom proxy headers that the ADK inspector used).
+Each subproject may also have its own `.env.example` (e.g. `frontend/.env.example`). Copy these to `.env` and fill in required keys before running.
 
-## Running the agent (development)
+## 3. MCP Tools Catalog
+The `agent-tools` server exposes six tools used by the agent:
+- search youtube channels – query channels by topic, min subscribers, language
+- analyze youtube channels – stats + recent video analysis + recommended actions
+- analyze youtube videos – transcript & metadata insights, scene/topic breakdown
+- upload youtube videos – upload file + thumbnail + metadata, returns video id
+- generate thumbnail – Freepik + base image + modifier to produce variant
+- generate cover image – Freepik + description-only hero/cover image generation
 
-This repository contains two ADK runtimes you can run during development:
-
-- The original ACE system under `ace_system/` (run using its own entrypoint: `python3 ace_system/main.py`).
-- A lightweight runner for the standalone agents in `adk_agents/` (`adk_runner.py`) which starts ADK on port `8082` and is convenient for frontend integration.
-
-To run the ADK API server (recommended for the quick loop with frontend):
-
-This project includes ADK agents under `adk_agents/`. Instead of using the local adk runner script, the ADK CLI provides a built-in API server you can run directly from that folder. The API server will serve the ADK HTTP API and developer UI (usually on port `8000`).
-
+## 4. Local Development Workflow
+1. Install dependencies:
 ```bash
-# create & activate a venv, then install project deps if needed
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r ace_system/requirements.txt  # or use your project's pyproject/poetry workflow
-
-# Start the ADK API server from the agents directory
-cd adk_agents
-adk api_server
-
-# By default the API server listens on http://localhost:8000
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt  # or: uv sync
+cd agent-tools && npm install && cd ..
+cd frontend && npm install && cd ..
 ```
-
-Notes:
-- The official `adk api_server` is the supported way to serve your ADK agents in development; it exposes the same API endpoints the `adk web` UI uses and is the one exercised by `test_adk.py` in this repo.
-- If you previously used `adk_runner.py` it can still be used for some workflows, but this README and the frontend now expect the ADK API server started with `adk api_server` (default host `http://localhost:8000`).
-- If your frontend runs on a different host/port, make sure the ADK API server CORS configuration allows your frontend origin.
-
-### Inspect available apps and test endpoints
-
-# Autonomous YouTube Analysis Agent
-
-Lightweight ADK agents and a React frontend for exploring YouTube channel and video analysis workflows.
-
-This repository contains:
-
-- `adk_agents/` — ADK-discoverable agents (standalone `youtube_agent`).
-- `agent-tools/` — MCP tool server (Node) used by agents for external tool calls.
-- `frontend/` — React + Vite UI to interact with agents.
-- `ace_system/` — legacy ACE agent system (kept for reference).
-
-Quick links
-
-- ADK API server (dev): `http://localhost:8000` (when started with `adk api_server`)
-- Frontend dev: `http://localhost:5173`
-- MCP / tools server (dev): `http://localhost:3001`
-
-## Overview
-
-This project demonstrates how to build ADK agents that call external MCP tools and surface results in a small React app. The recommended local development flow is:
-
-1. Start the MCP tool server (`agent-tools`).
-2. Start the ADK API server (run `adk api_server` from `adk_agents/`).
-3. Start the frontend and interact with the agent UI.
-
-## Requirements
-
-- Python 3.10+ (for ADK agents)
-- Node.js 16+ and npm/yarn/pnpm (for frontend and `agent-tools`)
-- ADK CLI installed (for `adk api_server`)
-
-## Environment
-
-Create a top-level `.env` (do not commit secrets). Example:
-
-```
-GOOGLE_API_KEY=your-google-key
-GENERATOR_MODEL=gemini-2.5-flash
-MCP_EXTRA_HEADERS={}
-```
-
-- `MCP_EXTRA_HEADERS` (optional): JSON string with headers agents should include on MCP requests.
-
-## Run locally
-
-1) Start the MCP tool server
-
+2. Start MCP tools server:
 ```bash
 cd agent-tools
-npm install
 npm run dev
 ```
-
-2) Start the ADK API server
-
+3. Start ADK API server:
 ```bash
 cd adk_agents
 adk api_server
 ```
-
-This starts the ADK API server (default `http://localhost:8000`) which the frontend uses for sessions and streaming.
-
-If you don't have the ADK CLI installed, follow the ADK project's installation instructions. A few options:
-
-- Install via the ADK project's recommended installer (see the project's README):
-
-```bash
-# Example (follow upstream docs for exact commands):
-# git clone https://github.com/google/ai-controllers.git
-# cd ai-controllers
-# python3 -m venv .venv && source .venv/bin/activate
-# pip install -e .
-```
-
-- Or follow the ADK distribution docs for your environment. The ADK API server is
-	typically started with `adk api_server` from the agents directory once installed.
-
-If ADK is available as a pip package in your environment, you may add it to
-`requirements.txt` (example commented placeholder is included there).
-
-Using `uv` instead of pip
-
-If you prefer `uv` (Astral) for environment and package management instead of `pip` and
-`requirements.txt`, you can install it and use it to provision the project. Example steps:
-
-```bash
-# Install `uv` (follow upstream docs for the latest install method):
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# After installing, follow your `uv` workflow to install dependencies for this repo
-# (for example, `uv install` if using a `uv` manifest/lockfile). If you rely on
-# pip-style installs, `requirements.txt` is still available as a fallback.
-```
-
-Note: `uv` is a separate tool and may manage environments differently from a simple
-`pip -r requirements.txt` workflow. Use whichever tool fits your team's workflow.
-
-3) Start the frontend
-
+4. Start frontend:
 ```bash
 cd frontend
-npm install
 npm run dev
 ```
+5. Open the UI (`http://localhost:5173`) and interact with the agent (it streams SSE responses and shows reasoning, tool usage, and formatted markdown).
 
-Open the frontend at `http://localhost:5173`.
+Notes:
+- Ensure ADK CORS allows `http://localhost:5173`.
+- If using `adk_runner.py` (port 8082) update frontend base URL accordingly; recommended is the official `adk api_server`.
+- For faster Python dependency installs use `uv` (`pip install uv` then `uv sync`).
 
-## Useful ADK endpoints
+## 5. Dynamic FrontMCP Authentication (Detailed)
+FrontMCP (Frontegg) issues short-lived tokens. The agent needs those tokens in outbound requests to the MCP server. Workflow:
+1. Open the MCP Inspector UI or developer console where FrontMCP runs.
+2. Capture the latest auth token(s) from network requests or application storage (e.g. `authorization` or `x-mcp-proxy-auth` headers).
+3. Construct `MCP_EXTRA_HEADERS` as a JSON string containing all required headers.
+4. Export in your shell before starting ADK or place in `.env`:
+```bash
+export MCP_EXTRA_HEADERS='{"authorization":"Bearer <copied-token>","x-mcp-proxy-auth":"Bearer <copied-token>","mcp-protocol-version":"2025-06-18"}'
+```
+5. Restart the ADK API server so the agent picks up the new headers.
 
-- `GET /apps` — list registered apps
-- `POST /apps/{app}/users/{user}/sessions/{session}` — create session
-- `POST /run_sse` — send message and receive SSE streaming responses
+Because tokens rotate, repeat this whenever the MCP Inspector shows 401 errors or tool calls fail. Do NOT commit real tokens.
 
-See `test_adk.py` for a minimal example of creating a session and reading SSE `data:` frames.
+## 6. Troubleshooting
+- Empty tool results: Verify fresh `MCP_EXTRA_HEADERS` and that the MCP server is running on the expected port.
+- CORS errors: Confirm ADK server started with permissive origins (`localhost:5173`).
+- Stale streaming output: Frontend selects the last non-meta SSE event; ensure ADK emits proper event types.
+- Auth 401/403: Refresh tokens from Inspector and update `MCP_EXTRA_HEADERS`.
 
-## Frontend notes
+## 7. Contributing
+1. Fork & branch.
+2. Implement feature or fix (focused commits).
+3. Add concise reproduction or validation notes in PR description.
+4. Keep changes minimal; avoid unrelated refactors.
 
-- `frontend/src/services/aceService.ts` contains the ADK integration (session creation + `/run_sse` handling). In development the frontend proxies `/adk/*` to the ADK API server.
-- Ensure ADK CORS allows your frontend origin (e.g., `http://localhost:5173`).
+## 8. Hackathon Team
+- Peixi Xie
+- Yuvraj Gupta
+- Kyuto Kawabata
+- Pramod Thebe
 
-## Deployment guidance
-
-- Frontend: build with `npm run build` and host the static `dist` output on any static host.
-- ADK API server: run with `adk api_server` or serve with `uvicorn` behind a reverse proxy (nginx) in production.
-- MCP/tool server: deploy the Node service where the ADK agent can reach it; secure with TLS and auth.
-
-Example systemd snippet to run `adk api_server` via a shell script or venv-managed command is appropriate for production.
-
-## Troubleshooting
-
-- No app ID: `GET /apps` to discover the `id` to use when creating sessions.
-- SSE method not allowed: use `POST /run_sse` for streaming (ADK requires POST for SSE streams).
-- CORS problems: add your frontend origin to ADK CORS configuration.
-- MCP auth failures: add necessary headers to `MCP_EXTRA_HEADERS`.
-
-## Contributing
-
-1. Fork, branch, implement, and open a PR.
-2. Include a brief test or manual verification step in the PR description.
-
-## License
-
-- MIT License
+## 9. License
+MIT – see `LICENSE`.
